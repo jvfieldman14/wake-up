@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Good morning</title>
+<style>
+  :root {
+    --top: #1d2f57; --bot: #0f1a33; --ink: #fdf3e7; --dim: #aab6d3; --sun: #ffc27a; --line: #34456e;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: linear-gradient(180deg, var(--top), var(--bot)) fixed;
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    padding: max(32px, env(safe-area-inset-top)) 40px max(28px, env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: 1fr 1.1fr; grid-template-rows: 1fr auto; gap: 28px 56px;
+  }
+  .left { display: flex; flex-direction: column; justify-content: center; gap: 28px; }
+  .greet { color: var(--sun); font-size: 1.5rem; }
+  .time { font-size: clamp(5rem, 14vw, 10rem); line-height: .9; letter-spacing: -.03em; font-weight: 500; }
+  .date { color: var(--dim); font-size: 1.4rem; margin-top: 8px; }
+  .wx { display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  .temp { font-size: 4.5rem; font-weight: 300; }
+  .wxtext { font-size: 1.35rem; }
+  .wxsub { color: var(--dim); font-size: 1.05rem; width: 100%; }
+  .right { display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+  h2 { font-size: 1.15rem; font-weight: 400; color: var(--dim); margin-bottom: 14px; }
+  ul { list-style: none; padding: 0; }
+  li { padding: 14px 0; border-top: 1px solid var(--line); }
+  li:last-child { border-bottom: 1px solid var(--line); }
+  li a { color: var(--ink); text-decoration: none; font-size: 1.15rem; line-height: 1.3; }
+  .src { color: var(--sun); font-family: -apple-system, Arial, sans-serif; font-size: .9rem; margin-bottom: 3px; }
+  .desc { color: var(--dim); font-size: 1rem; line-height: 1.35; margin-top: 4px; }
+  li small { display: block; color: var(--dim); margin-top: 4px; font-family: -apple-system, Arial, sans-serif; font-size: .9rem; }
+  .quote { grid-column: 1 / -1; border-left: 3px solid var(--sun); padding-left: 22px; max-width: 60rem; }
+  .quote p { font-size: 1.6rem; line-height: 1.35; font-style: italic; }
+  .quote span { color: var(--dim); font-family: -apple-system, Arial, sans-serif; font-size: 1rem; display: block; margin-top: 8px; }
+  .msg { color: var(--dim); font-family: -apple-system, Arial, sans-serif; }
+  .cal { margin-bottom: 26px; }
+  .ev { display: flex; gap: 18px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 1.25rem; line-height: 1.3; }
+  .ev:last-child { border-bottom: 1px solid var(--line); }
+  .ev b { font-weight: 400; color: var(--sun); min-width: 6.2rem; font-family: -apple-system, Arial, sans-serif; font-size: 1.05rem; padding-top: 2px; }
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto; padding: 28px 24px; height: auto; }
+    .quote { grid-column: auto; }
+  }
+</style>
+</head>
+<body>
+<section class="left">
+  <div>
+    <div class="greet" id="greet"></div>
+    <div class="time" id="time"></div>
+    <div class="date" id="date"></div>
+  </div>
+  <div class="wx" id="wx"><span class="msg">Loading weather…</span></div>
+</section>
+<section class="right">
+  <div class="cal"><h2>Today</h2><div id="cal"><span class="msg">Loading calendar…</span></div></div>
+  <h2>Morning news</h2>
+  <ul id="news"><li><span class="msg">Loading headlines…</span></li></ul>
+</section>
+<section class="quote"><p id="q"></p><span id="qa"></span></section>
+
+<script>
+// ---- Settings: change these ----
+const PLACE = { name: "Downers Grove", lat: 41.7956, lon: -88.0112 };
+const API = "https://api.rss2json.com/v1/api.json?rss_url=";   // free, no key: turns an RSS feed into data
+// One lead story per slot. Each slot tries its feeds in order until one works.
+const NPR_FEEDS  = [["NPR", "https://feeds.npr.org/1001/rss.xml"]];
+const ESPN_FEEDS = [["ESPN", "https://www.espn.com/espn/rss/news"], ["CBS Sports", "https://www.cbssports.com/rss/headlines/"]];
+// Third slot. If the first address doesn't work, the page tries the next one.
+const THIRD_FEEDS = [["Planetizen", "https://www.planetizen.com/feed"], ["Planetizen", "https://www.planetizen.com/rss.xml"]];
+
+const HISTORICAL = [
+  ["The only thing we have to fear is fear itself.", "Franklin D. Roosevelt"],
+  ["It is hard to fail, but it is worse never to have tried to succeed.", "Theodore Roosevelt"],
+  ["We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "Will Durant"],
+  ["The unexamined life is not worth living.", "Socrates"],
+  ["If it is not right, do not do it; if it is not true, do not say it.", "Marcus Aurelius"],
+  ["The journey of a thousand miles begins with a single step.", "Lao Tzu"],
+  ["Well done is better than well said.", "Benjamin Franklin"],
+  ["Genius is one percent inspiration and ninety-nine percent perspiration.", "Thomas Edison"],
+  ["I learned that courage was not the absence of fear, but the triumph over it.", "Nelson Mandela"],
+  ["I attribute my success to this: I never gave or took any excuse.", "Florence Nightingale"],
+  ["Life is not easy for any of us. But what of that? We must have perseverance and above all confidence in ourselves.", "Marie Curie"],
+  ["Darkness cannot drive out darkness; only light can do that.", "Martin Luther King Jr."],
+  ["The time is always right to do what is right.", "Martin Luther King Jr."],
+  ["We must accept finite disappointment, but never lose infinite hope.", "Martin Luther King Jr."],
+  ["If there is no struggle, there is no progress.", "Frederick Douglass"],
+  ["I am not afraid of storms, for I am learning how to sail my ship.", "Louisa May Alcott"],
+  ["It does not matter how slowly you go as long as you do not stop.", "Confucius (attributed)"],
+  ["The beginning is the most important part of the work.", "Plato"],
+  ["Do the difficult things while they are easy and do the great things while they are small.", "Lao Tzu"],
+  ["Always bear in mind that your own resolution to succeed is more important than any other.", "Abraham Lincoln"],
+  ["You must do the thing you think you cannot do.", "Eleanor Roosevelt"],
+  ["Alone we can do so little; together we can do so much.", "Helen Keller (attributed)"],
+  ["Life is either a daring adventure or nothing at all.", "Helen Keller"],
+  ["Imagination is more important than knowledge.", "Albert Einstein"],
+  ["Nothing great was ever achieved without enthusiasm.", "Ralph Waldo Emerson"],
+  ["If one advances confidently in the direction of his dreams, he will meet with a success unexpected in common hours.", "Henry David Thoreau"],
+  ["We suffer more often in imagination than in reality.", "Seneca"],
+  ["It is not that we have a short time to live, but that we waste a lot of it.", "Seneca"],
+  ["No man is free who is not master of himself.", "Epictetus"],
+  ["I have learned over the years that when one's mind is made up, this diminishes fear.", "Rosa Parks"],
+  ["Failure is impossible.", "Susan B. Anthony"],
+  ["Success is to be measured not so much by the position one has reached as by the obstacles one has overcome.", "Booker T. Washington"],
+  ["The mountains are calling and I must go.", "John Muir"],
+  ["Great things are done by a series of small things brought together.", "Vincent van Gogh"],
+  ["How wonderful it is that nobody need wait a single moment before starting to improve the world.", "Anne Frank"],
+  ["Do what you can, with what you have, where you are.", "Theodore Roosevelt (attributed)"],
+  ["An investment in knowledge pays the best interest.", "Benjamin Franklin (attributed)"],
+  ["The best time to plant a tree was twenty years ago. The second best time is now.", "Proverb"],
+  ["A smooth sea never made a skilled sailor.", "Proverb"],
+  ["I am still learning.", "Michelangelo (attributed)"],
+  ["The most difficult thing is the decision to act; the rest is merely tenacity.", "Amelia Earhart (attributed)"],
+  ["What you do makes a difference, and you have to decide what kind of difference you want to make.", "Jane Goodall"]
+];
+const ATHLETES = [
+  ["I've failed over and over and over again in my life. And that is why I succeed.", "Michael Jordan"],
+  ["I hated every minute of training, but I said, “Don’t quit. Suffer now and live the rest of your life as a champion.”", "Muhammad Ali"],
+  ["A champion is defined not by their wins but by how they can recover when they fall.", "Serena Williams"],
+  ["You miss 100% of the shots you don't take.", "Wayne Gretzky"],
+  ["Pressure is a privilege.", "Billie Jean King"],
+  ["You can't put a limit on anything. The more you dream, the farther you get.", "Michael Phelps"],
+  ["Never let the fear of striking out keep you from playing the game.", "Babe Ruth (attributed)"],
+  ["Everything negative, pressure, challenges, is all an opportunity for me to rise.", "Kobe Bryant"],
+  ["Failure happens all the time. What makes you better is how you react to it.", "Mia Hamm"],
+  ["We all have dreams. But in order to make dreams into reality, it takes an awful lot of determination, dedication, self-discipline, and effort.", "Jesse Owens"],
+  ["Start where you are. Use what you have. Do what you can.", "Arthur Ashe"],
+  ["You have to fight to reach your dream. You have to sacrifice and work hard for it.", "Lionel Messi"],
+  ["I'd rather regret the risk that didn't work out than the chances I didn't take at all.", "Simone Biles"],
+  ["My motto was always to keep swinging.", "Hank Aaron"],
+  ["Never underestimate the power of dreams and the influence of the human spirit.", "Wilma Rudolph (attributed)"],
+  ["Today I consider myself the luckiest man on the face of the earth.", "Lou Gehrig"],
+  ["It ain't over till it's over.", "Yogi Berra"],
+  ["Don't look back. Something might be gaining on you.", "Satchel Paige"],
+  ["Any time you have an opportunity to make a difference in this world and you don't, then you are wasting your time on Earth.", "Roberto Clemente"],
+  ["It's not whether you get knocked down, it's whether you get up.", "Vince Lombardi (attributed)"],
+  ["A life is not important except in the impact it has on other lives.", "Jackie Robinson"],
+  ["Success is no accident. It is hard work, perseverance, learning, studying, sacrifice and most of all, love of what you are doing.", "Pelé (attributed)"]
+];
+
+const WX = {0:"Clear",1:"Mostly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Freezing fog",
+  51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",56:"Freezing drizzle",57:"Freezing drizzle",
+  61:"Light rain",63:"Rain",65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",
+  71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Rain showers",81:"Rain showers",82:"Heavy showers",
+  85:"Snow showers",86:"Snow showers",95:"Thunderstorm",96:"Thunderstorm, hail",99:"Thunderstorm, hail"};
+
+const $ = id => document.getElementById(id);
+
+function tick() {
+  const now = new Date(), h = now.getHours();
+  $("greet").textContent = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  $("time").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M/i, "");
+  $("date").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+}
+
+// Days since Jan 1, 2026. One quote shows per day: two historical days, then an athlete day, repeating.
+function dayNum() { const d = new Date(); return Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(2026, 0, 1)) / 864e5); }
+function showQuote() {
+  const n = dayNum();
+  const [text, who] = n % 3 === 2 ? ATHLETES[Math.floor(n / 3) % ATHLETES.length] : HISTORICAL[(n - Math.floor((n + 1) / 3)) % HISTORICAL.length];
+  $("q").textContent = "“" + text + "”";
+  $("qa").textContent = who;
+}
+
+async function loadWeather() {
+  try {
+    const u = "https://api.open-meteo.com/v1/forecast?latitude=" + PLACE.lat + "&longitude=" + PLACE.lon +
+      "&current=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+      "&temperature_unit=fahrenheit&timezone=auto&forecast_days=1";
+    const r = await (await fetch(u)).json();
+    const c = r.current, d = r.daily;
+    const el = $("wx"); el.textContent = "";
+    const t = document.createElement("div"); t.className = "temp"; t.textContent = Math.round(c.temperature_2m) + "°";
+    const w = document.createElement("div"); w.className = "wxtext"; w.textContent = WX[c.weather_code] || "—";
+    const s = document.createElement("div"); s.className = "wxsub";
+    s.textContent = "Feels like " + Math.round(c.apparent_temperature) + "° · High " + Math.round(d.temperature_2m_max[0]) +
+      "° · Low " + Math.round(d.temperature_2m_min[0]) + "° · " + (d.precipitation_probability_max[0] ?? 0) + "% chance of precipitation · " + PLACE.name;
+    el.append(t, w, s);
+  } catch (e) { $("wx").innerHTML = '<span class="msg">Weather unavailable. Check the internet connection.</span>'; }
+}
+
+function ago(ms) {
+  const m = Math.round(ms / 6e4);
+  return m < 60 ? m + " min ago" : Math.round(m / 60) + " hr ago";
+}
+
+const plain = html => { const d = new DOMParser().parseFromString(html || "", "text/html"); return (d.body.textContent || "").replace(/\s+/g, " ").trim(); };
+
+async function leadStory(feeds) {
+  for (const [name, url] of feeds) {
+    try {
+      const r = await (await fetch(API + encodeURIComponent(url))).json();
+      const items = (r.items || []).filter(i => i.title).map(i => ({ ...i, t: new Date((i.pubDate || "").replace(" ", "T") + "Z").getTime() }));
+      if (items.length) { items.sort((a, b) => (b.t || 0) - (a.t || 0)); return { name, item: items[0] }; }
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function loadNews() {
+  const slots = [NPR_FEEDS, ESPN_FEEDS, THIRD_FEEDS];
+  const found = await Promise.all(slots.map(leadStory));
+  const stories = found.map((f, i) => f || { name: slots[i][0][0], item: null });
+  const ul = $("news"); ul.textContent = "";
+  if (stories.every(x => !x.item)) { ul.innerHTML = '<li><span class="msg">Headlines unavailable. Check the internet connection.</span></li>'; return; }
+  const now = Date.now();
+  stories.forEach(({ name, item }) => {
+    const li = document.createElement("li"), src = document.createElement("div");
+    src.className = "src"; src.textContent = name; li.append(src);
+    if (!item) {
+      const m = document.createElement("div"); m.className = "msg"; m.textContent = "Couldn't load this feed."; li.append(m); ul.append(li); return;
+    }
+    const a = document.createElement("a"), s = document.createElement("small");
+    a.textContent = item.title; a.href = item.link; li.append(a);
+    const desc = plain(item.description);
+    if (desc && desc !== item.title) { const p = document.createElement("div"); p.className = "desc"; p.textContent = desc; li.append(p); }
+    if (isFinite(item.t)) { s.textContent = ago(now - item.t); li.append(s); }
+    ul.append(li);
+  });
+}
+
+// Keep the screen on while this page is open
+async function keepAwake() {
+  try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { keepAwake(); loadWeather(); loadNews(); } });
+
+// ---- Look: shifts from dark to light through the morning ----
+const NIGHT = [29,47,87, 15,26,51], DAWN = [74,63,122, 166,90,99], DAY = [255,244,227, 246,227,200];
+const STOPS = [[0,NIGHT],[375,NIGHT],[420,DAWN],[480,DAY],[1020,DAY],[1140,DAWN],[1260,NIGHT],[1440,NIGHT]];
+function applyTheme() {
+  const n = new Date(), m = n.getHours() * 60 + n.getMinutes();
+  let i = 0; while (i < STOPS.length - 2 && m >= STOPS[i + 1][0]) i++;
+  const [t0, a] = STOPS[i], [t1, b] = STOPS[i + 1], k = Math.min(1, Math.max(0, (m - t0) / (t1 - t0)));
+  const c = a.map((v, j) => Math.round(v + (b[j] - v) * k));
+  const r = document.documentElement.style;
+  r.setProperty("--top", "rgb(" + c.slice(0, 3) + ")"); r.setProperty("--bot", "rgb(" + c.slice(3) + ")");
+  const lum = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] + 0.2126 * c[3] + 0.7152 * c[4] + 0.0722 * c[5]) / 2;
+  const light = lum > 150;
+  r.setProperty("--ink", light ? "#1b2745" : "#fdf3e7"); r.setProperty("--dim", light ? "#5b6684" : (lum > 70 ? "#f0dde0" : "#aab6d3"));
+  r.setProperty("--sun", light ? "#b85a14" : "#ffc27a"); r.setProperty("--line", light ? "#d9c7a8" : "rgba(255,255,255,.22)");
+}
+
+// ---- Calendar: a Shortcut passes today's events in the page address ----
+// Address looks like  wake-up.html#events=<url-encoded text>  with one "time|title" per line.
+function loadCal() {
+  const el = $("cal"), key = "wakeup-events";
+  let raw = new URLSearchParams(location.hash.slice(1)).get("events"), day = new Date().toDateString();
+  try {
+    if (raw !== null) localStorage.setItem(key, JSON.stringify({ day, raw }));
+    else { const s = JSON.parse(localStorage.getItem(key) || "null"); if (s && s.day === day) raw = s.raw; }
+  } catch (e) {}
+  el.textContent = "";
+  if (raw === null) { el.innerHTML = '<span class="msg">Calendar not connected yet.</span>'; return; }
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 6);
+  if (!lines.length) { el.innerHTML = '<span class="msg">Nothing on the calendar today.</span>'; return; }
+  lines.forEach(l => {
+    const [t, ...rest] = l.split("|"), d = document.createElement("div"), b = document.createElement("b"), s = document.createElement("span");
+    d.className = "ev"; b.textContent = rest.length ? t : ""; s.textContent = rest.length ? rest.join("|") : t;
+    d.append(b, s); el.append(d);
+  });
+}
+window.addEventListener("hashchange", loadCal);
+
+applyTheme(); loadCal();
+setInterval(applyTheme, 60000);
+tick(); setInterval(tick, 1000);
+showQuote(); loadWeather(); loadNews(); keepAwake();
+setInterval(() => { loadWeather(); loadNews(); }, 30 * 60 * 1000);
+</script>
+</body>
+</html>
